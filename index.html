@@ -1,0 +1,362 @@
+<head>
+  <meta charset="UTF-8">
+  <script src="https://unpkg.com/wanakana"></script>
+  <script src="/scripts/getData.js"></script>
+  <style>
+    .game-container
+    {
+      width: 500px;
+      height: 500px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    
+    .loading-output
+    {
+      margin: 0 auto;
+      padding: 20px;
+      font-size: 20px;
+    }
+    
+    input
+    {
+      border: 1px solid black;
+      border-radius: 4px;
+      padding: 10px;
+      margin: 20px 0px;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 20px;
+    }
+    
+    span
+    {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 32px;
+      margin: 50px 0px;
+    }
+    
+    .characters 
+    {
+      font-size: 64px;
+    }
+    
+    .load {
+      position: relative;
+      animation: load 1s linear;
+    }
+    
+    .popup-in {
+      position: relative;
+      animation: popup-in 0.2s linear;
+    }
+    
+    .popup-out {
+      position: relative;
+      animation: popup-out 0.8s linear;
+    }
+
+    @keyframes load {
+      0% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+    
+    @keyframes popup-in {
+      0% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+    
+    @keyframes popup-out {
+      0% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="game-container">
+    <span id="characters" class="characters"></span>
+    <span id="hiragana-output"></span>
+    <br>
+    <input type="text" id="wanakana-input"/>
+    <p id="loading-output" class="loading-output"></p>
+    <script>
+      var textInput = document.getElementById('wanakana-input');
+      var hiraOutput = document.getElementById('hiragana-output');
+      var loadOutput = document.getElementById('loading-output');
+      var kanjiSpan = document.getElementById('characters');
+      //
+      var apiKey = window.localStorage.getItem('apiKey');
+      var user;
+      var levelToTest;
+      var categoriesToTest;
+      var subjects;
+      var currentSubject;
+      var loading = false;
+      var currentlyTyping;
+      var isFading = false;
+      //
+      textInput.style.opacity = 0;
+      textInput.focus();
+      //
+      function generateSubjectInfo(subject) {
+        let subjectObject = {
+          object: subject.object,
+          currently: 'meaning',
+          characters: subject.data.characters,
+          meanings: subject.data.meanings.map(meaning => meaning.meaning)
+        }
+        let auxMeanings = subject.data.auxiliary_meanings.map(meaning => meaning.meaning);
+        for (let auxMeaning of auxMeanings) {
+          subjectObject.meanings.push(auxMeaning);
+        }
+        if (subject.object !== 'radical') {
+          subjectObject.readings = subject.data.readings.map(reading => {
+            if (reading.accepted_answer) {
+              return reading.reading;
+            }
+          });
+        }
+        return subjectObject;
+      }
+      
+      function loadAnim() {
+        textInput.classList.add('load');
+        setTimeout(function() {
+            textInput.classList.remove('load');
+            textInput.style.opacity = 1;
+        }, 1000);
+      }
+      
+      function typeOut(typeString, time = 1) {
+        let typeArray = typeString.split('');
+        textInput.placeholder = '';
+        currentlyTyping = typeString;
+        for (let index in typeArray) {
+          let char = typeArray[index];
+          setTimeout(() => {
+            if (typeString == currentlyTyping) {
+              textInput.placeholder = textInput.placeholder + char;
+            }
+          }, ((time * 1000) / typeArray.length) * index);
+        }
+      }
+      
+      function popout() {
+        if (isFading) return;
+        isFading = true;
+        loadOutput.classList.add('popup-in');
+        setTimeout(function() {
+          loadOutput.classList.remove('popup-in');
+          loadOutput.style.opacity = 1;
+          loadOutput.classList.add('popup-out');
+          setTimeout(function() {
+            loadOutput.style.opacity = 0;
+            loadOutput.classList.remove('popup-out');
+            isFading = false;
+          }, 800);
+        }, 200);
+      }
+      //
+      if (!apiKey) {
+        loadOutput.innerHTML = 'Please enter an API key.';
+        loadAnim();
+      } else {
+        loading = true;
+        getUserInfo(apiKey).then(result => {
+          loading = false;
+          user = result;
+          loadAnim();
+          typeOut('Enter level',1);
+          loadOutput.innerHTML = '';
+        }).catch(error => {
+          loading = false;
+          hiraOutput.innerHTML = 'Error.';
+          loadOutput.innerHTML = error;
+        })
+      }
+      //
+      document.addEventListener("keydown", event => {
+        if (event.isComposing || event.keyCode === 229) {
+          return;
+        }
+        if (event.keyCode === 13) {
+          if (loading) return;
+          if (!user && apiKey) return;
+          if (!apiKey) {
+            // Get API Key
+            let tempKey = textInput.value.trim();
+            loading = true;
+            getUserInfo(tempKey).then(userObject => {
+              user = userObject;
+              apiKey = tempKey;
+              window.localStorage.setItem('apiKey',apiKey);
+              typeOut('Enter level',1);
+              loadOutput.innerHTML = '';
+              textInput.value = '';
+              textInput.focus();
+              loading = false;
+            }).catch(error => {
+              loadOutput.innerHTML = 'That wasn\'t a valid key. Please try again.';
+              textInput.value = '';
+              textInput.focus();
+              loading = false;
+            });
+          } else if (!levelToTest) {
+            // Get Level to test
+            let levelResponse = textInput.value;
+            if (levelResponse == 'all' || levelResponse == '') {
+              typeOut('Enter categories',1);
+              levelToTest = '';
+              for (let i = 1; i <= user.level; i++) {
+                levelToTest += `${String(i)},`;
+              }
+              levelToTest = levelToTest.slice(0, -1);
+              textInput.value = '';
+              textInput.focus();
+              return;
+            }
+            let levels = levelResponse.split(' ');
+            for (let level of levels) {
+              level = parseInt(level);
+              if (!level) {
+                loadOutput.innerHTML = 'One of your entries wasn\'t a number.';
+                loadOutput.style.color = 'red';
+                popout();
+                textInput.value = '';
+                textInput.focus();
+                return;
+              }
+              if (level > user.level) {
+                loadOutput.innerHTML = `You haven\'t reached that level yet.<br>Your highest level is ${user.level}.`;
+                loadOutput.style.color = 'red';
+                popout();
+                textInput.value = '';
+                textInput.focus();
+                return;
+              }
+            }
+            levelToTest = levels;
+            typeOut('Enter categories',1);
+            loadOutput.innerHTML = '';
+            textInput.value = '';
+            textInput.focus();
+          } else if (!categoriesToTest) {
+            // Get Categories to test
+            let categories = [];
+            for (let category of textInput.value.split(' ')) {
+              switch (category) {
+                case 'radical': case 'r': categories.push('radical'); break;
+                case 'kanji': case 'k': categories.push('kanji'); break;
+                case 'vocabulary': case 'v': categories.push('vocabulary'); break;
+                case 'all': 
+                  categories.push('radical','kanji','vocabulary');
+                  break;
+                case '': 
+                  categories.push('radical','kanji','vocabulary'); 
+                  break;
+                default:
+                  loadOutput.innerHTML = 'One of your options wasn\'t a valid entry.<br>Valid entries are radical, kanji, vocabulary, or all.';
+                  loadOutput.style.color = 'red';
+                  popout();
+                  textInput.value = '';
+                  textInput.focus();
+                  return;
+              }
+            }
+            categories = categories.join(',');
+            textInput.value = '';
+            loadOutput.innerHTML = '';
+            loading = true;
+            // Get Subjects
+            getTestableSubjects(apiKey,{levels:levelToTest,types:categories}).then(result => {
+              subjects = result;
+              categoriesToTest = categories;
+              let pickedSubject = subjects[Math.floor(Math.random() * subjects.length)];
+              currentSubject = generateSubjectInfo(pickedSubject);
+              typeOut('Meaning',0.25);
+              kanjiSpan.textContent = currentSubject.characters;
+              switch (currentSubject.object) {
+                case 'radical':
+                  kanjiSpan.style.color = '#6495ED'; break;
+                case 'kanji':
+                  kanjiSpan.style.color = '#FF1493'; break;
+                case 'vocabulary':
+                  kanjiSpan.style.color = '#9400D3'; break;
+              }
+              textInput.focus();
+              loadOutput.innerHTML = '';
+              loading = false;
+            }).catch(error => {
+              loadOutput.innerHTML = error;
+              loading = false;
+            });
+          } else if (currentSubject) {
+            // Check Answer during game
+            if (currentSubject.currently == 'meaning') {
+              // Check Meaning
+              if (currentSubject.meanings.find(meaning => textInput.value.toLowerCase().trim() === meaning.toLowerCase())) {
+                // Correct Answer
+                loadOutput.style.color = 'green';
+                loadOutput.innerHTML = 'Correct!';
+                popout();
+                textInput.value = '';
+                textInput.focus();
+                if (currentSubject.object == 'radical') {
+                  let pickedSubject = subjects[Math.floor(Math.random() * subjects.length)];
+                  currentSubject = generateSubjectInfo(pickedSubject);
+                } else {
+                  typeOut('Reading',0.25);
+                  wanakana.bind(textInput);
+                  currentSubject.currently = 'reading';
+                }
+                kanjiSpan.textContent = currentSubject.characters
+                switch (currentSubject.object) {
+                  case 'radical':
+                    kanjiSpan.style.color = '#6495ED'; break;
+                  case 'kanji':
+                    kanjiSpan.style.color = '#FF1493'; break;
+                  case 'vocabulary':
+                    kanjiSpan.style.color = '#9400D3'; break;
+                }
+              } else {
+                loadOutput.style.color = 'red';
+                popout();
+                loadOutput.innerHTML = `Incorrect. <br>${currentSubject.meanings.join(', ')}`;
+                textInput.value = '';
+              }
+            } else {
+              // Check Reading
+              let modifiedTextInput = textInput.value.replace('n','ん');
+              if (currentSubject.readings.includes(modifiedTextInput.toLowerCase().trim())) {
+                // Correct Answer
+                loadOutput.style.color = 'green';
+                loadOutput.innerHTML = 'Correct!';
+                popout();
+                textInput.value = '';
+                let pickedSubject = subjects[Math.floor(Math.random() * subjects.length)];
+                currentSubject = generateSubjectInfo(pickedSubject);
+                typeOut('Meaning',0.25);
+                kanjiSpan.textContent = currentSubject.characters
+                switch (currentSubject.object) {
+                  case 'radical':
+                    kanjiSpan.style.color = '#6495ED'; break;
+                  case 'kanji':
+                    kanjiSpan.style.color = '#FF1493'; break;
+                  case 'vocabulary':
+                    kanjiSpan.style.color = '#9400D3'; break;
+                }
+                wanakana.unbind(textInput);
+                textInput.focus();
+              } else {
+                loadOutput.style.color = 'red';
+                popout();
+                loadOutput.innerHTML = `Incorrect. <br>${currentSubject.readings.join(', ')}`;
+                textInput.value = '';
+                textInput.focus();
+              }
+            }
+          }
+        }
+      });
+    </script>
+  </div>
+</body>
