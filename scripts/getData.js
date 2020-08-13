@@ -43,15 +43,15 @@ function requestPages(url, key, continuation = []) {
   });
 }
 
-function requestReviews(key, filters = {}) {
-  return requestPages(`https://api.wanikani.com/v2/reviews${getFilterString(filters)}`,key);
+function requestAssignments(key, filters = {}) {
+  return requestPages(`https://api.wanikani.com/v2/assignments${getFilterString(filters)}`,key);
 }
 
 function requestSubjects(key, filters = {}) {
   return requestPages(`https://api.wanikani.com/v2/subjects${getFilterString(filters)}`,key);
 }
 
-function getTestableSubjects(key, subjectFilters = {}, reviewFilters = {}) {
+function getTestableSubjects(key, subjectFilters = {}, assignFilters = {}) {
   const output = document.getElementById('loading-output');
   return new Promise((resolve, reject) => {
     output.innerHTML = 'Loading subjects...';
@@ -62,25 +62,17 @@ function getTestableSubjects(key, subjectFilters = {}, reviewFilters = {}) {
         reject(errorMessage);
       }
       output.innerHTML = `${subjectResults.length.toString()} subjects found.\nComparing with available reviews...`;
-      let subjectIDs = subjectResults.map(subject => subject.id);
-      reviewFilters.subject_ids = subjectIDs;
-      requestReviews(key, reviewFilters).then(reviewResults => {
-        if (reviewResults.error) {
-          let errorMessage = `Error ${reviewResults.code}: ${reviewResults.error}`;
+      requestAssignments(key, assignFilters).then(assignResults => {
+        if (assignResults.error) {
+          let errorMessage = `Error ${assignResults.code}: ${assignResults.error}`;
           output.innerHTML = errorMessage;
           reject(errorMessage);
         }
-        output.innerHTML = `${reviewResults.length.toString()} reviews found.`;
+        output.innerHTML = `${assignResults.length.toString()} assignments found.`;
         let subjects = subjectResults.filter(sResult => {
-          let validResults = reviewResults.find(rResult => {
-            let isValid = rResult.data.subject_id == sResult.id && sResult.data.characters;
-            if (!isValid) return false;
-            if (reviewFilters.srsStage === undefined) return true;
-            // i hate that i have to do this but in the words of our glorious leader
-            // "it is what it is"
-            let latestSRS = reviewResults.filter(_rResult => _rResult.data.subject_id == rResult.data.subject_id)
-            .map(_rResult => _rResult.data.starting_srs_stage).sort().pop();
-            return reviewFilters.srsStage.includes(latestSRS) || reviewFilters.srsStage == latestSRS;
+          let validResults = assignResults.find(aResult => {
+            let isValid = aResult.data.subject_id == sResult.id && sResult.data.characters;
+            return isValid;
           });
           return validResults;
         });

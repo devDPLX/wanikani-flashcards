@@ -1,6 +1,7 @@
 <head>
   <meta charset="UTF-8">
   <script src="https://unpkg.com/wanakana"></script>
+  <!-- idk why I have to put ?t=2 but it works so -->
   <script src="/scripts/getData.js?t=2"></script>
   <style>
     .game-container
@@ -169,9 +170,6 @@
           }, 800);
         }, 200);
       }
-      requestPages('https://api.wanikani.com/v2/assignments',apiKey).then(result => {
-        alert(result.length);
-      });
       //
       if (!apiKey) {
         loadOutput.innerHTML = 'Please enter an API key.';
@@ -289,7 +287,7 @@
             // Get SRS Stage to test
             let srsResponse = textInput.value;
             if (srsResponse == 'all' || srsResponse == '') {
-              srsToTest = {};
+              srsToTest = [0,1,2,3,4,5,6,7,8,9];
             } else {
               let srs = srsResponse.split(' ');
               for (let _srs of srs) {
@@ -309,7 +307,7 @@
             textInput.value = '';
             loading = true;
             // Get Subjects
-            getTestableSubjects(apiKey,{levels:levelToTest,types:categoriesToTest},{srsStage:srsToTest}).then(result => {
+            getTestableSubjects(apiKey,{levels:levelToTest,types:categoriesToTest},{srs_stages:srsToTest}).then(result => {
               subjects = result;
               activeSubjects = [...subjects];
               currentSubject = generateSubjectInfo();
