@@ -44,7 +44,7 @@ function requestPages(url, key, continuation = []) {
 }
 
 function requestReviews(key, filters = {}) {
-  return requestPages(`https://api.wanikani.com/v2/review_statistics${getFilterString(filters)}`,key);
+  return requestPages(`https://api.wanikani.com/v2/reviews${getFilterString(filters)}`,key);
 }
 
 function requestSubjects(key, filters = {}) {
@@ -62,6 +62,8 @@ function getTestableSubjects(key, subjectFilters = {}, reviewFilters = {}) {
         reject(errorMessage);
       }
       output.innerHTML = `${subjectResults.length.toString()} subjects found.\nComparing with available reviews...`;
+      let subjectIDs = subjectResults.map(subject => subject.id);
+      reviewFilters.subject_ids = subjectIDs;
       requestReviews(key, reviewFilters).then(reviewResults => {
         if (reviewResults.error) {
           let errorMessage = `Error ${reviewResults.code}: ${reviewResults.error}`;
@@ -72,11 +74,21 @@ function getTestableSubjects(key, subjectFilters = {}, reviewFilters = {}) {
         let subjects = subjectResults.filter(sResult => {
           let validResults = reviewResults.find(rResult => {
             let isValid = rResult.data.subject_id == sResult.id && sResult.data.characters;
-            return isValid;
+            if (!isValid) return false;
+            if (reviewFilters.srsStage === undefined) return true;
+            // i hate that i have to do this but in the words of our glorious leader
+            // "it is what it is"
+            let latestSRS = reviewResults.filter(_rResult => _rResult.data.subject_id == rResult.data.subject_id)
+            .map(_rResult => _rResult.data.starting_srs_stage).sort().pop();
+            return reviewFilters.srsStage.includes(latestSRS) || reviewFilters.srsStage == latestSRS;
           });
           return validResults;
         });
         output.innerHTML = `${subjects.length.toString()} testable subjects found.`;
+        /*resolve({
+          subjects: subjects,
+          reviews: reviewResults
+        });*/
         resolve(subjects);
       }).catch(error => {
         reject(error);

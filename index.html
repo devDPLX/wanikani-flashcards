@@ -1,7 +1,7 @@
 <head>
   <meta charset="UTF-8">
   <script src="https://unpkg.com/wanakana"></script>
-  <script src="/scripts/getData.js"></script>
+  <script src="/scripts/getData.js?t=2"></script>
   <style>
     .game-container
     {
@@ -89,7 +89,9 @@
       var levelToTest;
       var categoriesToTest;
       var subjects;
+      var activeSubjects;
       var currentSubject;
+      var srsToTest;
       var loading = false;
       var currentlyTyping;
       var isFading = false;
@@ -97,13 +99,15 @@
       textInput.style.opacity = 0;
       textInput.focus();
       //
-      function generateSubjectInfo(subject) {
+      function generateSubjectInfo() {
+        let subject = activeSubjects[0];
         let subjectObject = {
           object: subject.object,
           currently: 'meaning',
           characters: subject.data.characters,
           meanings: subject.data.meanings.map(meaning => meaning.meaning)
         }
+        let index = activeSubjects.indexOf(subject);
         let auxMeanings = subject.data.auxiliary_meanings.map(meaning => meaning.meaning);
         for (let auxMeaning of auxMeanings) {
           subjectObject.meanings.push(auxMeaning);
@@ -114,6 +118,16 @@
               return reading.reading;
             }
           });
+        }
+        activeSubjects.splice(0,1);
+        if (activeSubjects.length === 0) {
+          for (let index in subjects) {
+            let randomIndex = Math.floor(Math.random() * subjects.length)
+            let randomSubject = subjects[randomIndex];
+            activeSubjects.push(randomSubject);
+            subjects.splice(randomIndex,1);
+          }
+          subjects = [...activeSubjects];
         }
         return subjectObject;
       }
@@ -155,6 +169,9 @@
           }, 800);
         }, 200);
       }
+      requestPages('https://api.wanikani.com/v2/assignments',apiKey).then(result => {
+        alert(result.length);
+      });
       //
       if (!apiKey) {
         loadOutput.innerHTML = 'Please enter an API key.';
@@ -263,15 +280,39 @@
               }
             }
             categories = categories.join(',');
-            textInput.value = '';
+            categoriesToTest = categories;
+            typeOut('Enter SRS stage',1);
             loadOutput.innerHTML = '';
+            textInput.value = '';
+            textInput.focus();
+          } else if (!srsToTest) {
+            // Get SRS Stage to test
+            let srsResponse = textInput.value;
+            if (srsResponse == 'all' || srsResponse == '') {
+              srsToTest = {};
+            } else {
+              let srs = srsResponse.split(' ');
+              for (let _srs of srs) {
+                _srs = parseInt(_srs);
+                if (!_srs) {
+                  loadOutput.innerHTML = 'One of your entries wasn\'t a number.';
+                  loadOutput.style.color = 'red';
+                  popout();
+                  textInput.value = '';
+                  textInput.focus();
+                  return;
+                }
+              }
+              srsToTest = srs;
+            }
+            loadOutput.innerHTML = '';
+            textInput.value = '';
             loading = true;
             // Get Subjects
-            getTestableSubjects(apiKey,{levels:levelToTest,types:categories}).then(result => {
+            getTestableSubjects(apiKey,{levels:levelToTest,types:categoriesToTest},{srsStage:srsToTest}).then(result => {
               subjects = result;
-              categoriesToTest = categories;
-              let pickedSubject = subjects[Math.floor(Math.random() * subjects.length)];
-              currentSubject = generateSubjectInfo(pickedSubject);
+              activeSubjects = [...subjects];
+              currentSubject = generateSubjectInfo();
               typeOut('Meaning',0.25);
               kanjiSpan.textContent = currentSubject.characters;
               switch (currentSubject.object) {
@@ -301,8 +342,7 @@
                 textInput.value = '';
                 textInput.focus();
                 if (currentSubject.object == 'radical') {
-                  let pickedSubject = subjects[Math.floor(Math.random() * subjects.length)];
-                  currentSubject = generateSubjectInfo(pickedSubject);
+                  currentSubject = generateSubjectInfo();
                 } else {
                   typeOut('Reading',0.25);
                   wanakana.bind(textInput);
@@ -332,8 +372,7 @@
                 loadOutput.innerHTML = 'Correct!';
                 popout();
                 textInput.value = '';
-                let pickedSubject = subjects[Math.floor(Math.random() * subjects.length)];
-                currentSubject = generateSubjectInfo(pickedSubject);
+                currentSubject = generateSubjectInfo();
                 typeOut('Meaning',0.25);
                 kanjiSpan.textContent = currentSubject.characters
                 switch (currentSubject.object) {
